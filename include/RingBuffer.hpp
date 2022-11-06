@@ -34,8 +34,8 @@ class RingBuffer {
     cacheline_aligned uint32_t available_cached_{0};
     cacheline_aligned uint32_t free_cached_{0};
 
-    std::mutex lock_;
-    std::condition_variable cond_;
+    cacheline_aligned std::mutex lock_;
+    cacheline_aligned std::condition_variable cond_;
 
     // Unmap mirror memory
     static void unmap_mirror(const void *addr, const size_t size) noexcept {
@@ -172,6 +172,8 @@ class RingBuffer {
 
     void clear() noexcept {
         std::unique_lock<std::mutex> lock(lock_);
+        available_cached_ = 0;
+        free_cached_ = capacity_;
         read_pos_cached_ = 0;
         write_pos_cached_ = 0;
         read_pos_.store(0, std::memory_order_release);
@@ -184,8 +186,8 @@ class RingBuffer {
     }
 
     int32_t read_at_least(const uint32_t elements,
-                       std::chrono::microseconds timeout,
-                       std::function<uint32_t(const T* begin, const uint32_t avail)> callback) {
+                          const std::chrono::microseconds& timeout,
+                          const std::function<uint32_t(const T* begin, const uint32_t avail)> callback) {
 
         uint32_t avail_ = available(elements);
         if(avail_ >= elements) {
@@ -215,8 +217,8 @@ class RingBuffer {
 
 
     int32_t write_at_least(const uint32_t elements,
-                       std::chrono::microseconds timeout,
-                       std::function<uint32_t(T* begin, const uint32_t free)> callback) {
+                           const std::chrono::microseconds& timeout,
+                           const std::function<uint32_t(T* begin, const uint32_t free)> callback) {
 
         uint32_t free_ = free(elements);
 
