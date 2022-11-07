@@ -51,7 +51,7 @@ class RingBuffer {
     }
 
     // Double mapped memory for "magic" ringbuffer.
-    static T* map_mirror(uint32_t size) {
+    static T* map_mirror(const uint32_t size) {
         // Get pagesize
         const uint32_t pagesize = getpagesize();
         if(size < pagesize) {
@@ -118,16 +118,20 @@ class RingBuffer {
         return (capacity_ - 1) & val;
     }
 
-    public:
+public:
 
+    // Size in bytes, is a power of two.
     size_t size() const noexcept {
         return capacity_ * sizeof(T);
     }
 
+    // Capacity in elements
     inline uint32_t capacity() const noexcept {
         return capacity_;
     }
 
+    // Indicate number of elements written. Must only be called from
+    // producer.
     inline void produce(const uint32_t elements) noexcept {
         // intentional wrap around arithmetic
         free_cached_ -= elements;
@@ -136,6 +140,8 @@ class RingBuffer {
         cond_.notify_one();
     }
 
+    // Indicate number of elements read. Must only be called from
+    // consumer.
     inline void consume(const uint32_t elements) noexcept {
         // intentional wrap around arithmetic
         available_cached_ -= elements;
@@ -145,7 +151,7 @@ class RingBuffer {
     }
 
     // Available elements to read
-    inline uint32_t available([[maybe_unused]] uint32_t required = 0) noexcept {
+    inline uint32_t available(const uint32_t required = 0) noexcept {
         if(available_cached_ < required) {
             available_cached_ = write_pos_.load(std::memory_order_acquire)- read_pos_cached_;
         }
@@ -153,23 +159,24 @@ class RingBuffer {
     }
 
     // Available space to write
-    inline uint32_t free([[maybe_unused]] uint32_t required = 0) noexcept {
+    inline uint32_t free(const uint32_t required = 0) noexcept {
         if(free_cached_ < required) {
             free_cached_= capacity_ - (write_pos_cached_ - read_pos_.load(std::memory_order_acquire));
         }
         return free_cached_;
     }
 
+    // Pointer to read location. Must only be called from consumer.
     inline const T* read_ptr() const noexcept {
-        //return buffer_ + mask(read_pos_.load(std::memory_order_acquire));
         return buffer_ + mask(read_pos_cached_);
     }
 
+    // Pointer to write location. Must only be called from producer.
     inline T* write_ptr() const noexcept {
-        //return buffer_ + mask(write_pos_.load(std::memory_order_acquire));
         return buffer_ + mask(write_pos_cached_);
     }
 
+    // Rest buffer
     void clear() noexcept {
         std::unique_lock<std::mutex> lock(lock_);
         available_cached_ = 0;
